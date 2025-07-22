@@ -65,5 +65,33 @@ def handle_move(data: dict) -> None:
     print(f"[LOG] Updated file record id {file_record.id} path to {dest_path}")
 
 def handle_delete(data: dict) -> None:
+    path = data.get("path")
+    if not path:
+        print("[LOG] No path found in delete event data")
+        return
     
-    pass
+    print(f"[LOG] Deleting file: {path}")
+    
+    try:
+        # Find existing file record by path
+        existing = FileStore.read_by_path(path)
+        if not existing:
+            print(f"[LOG] No file record found for path: {path}")
+            return
+        
+        file_record = existing[0]
+        print(f"[LOG] Found file record to delete: {file_record.dict()}")
+        
+        # Mark as deleted in database
+        FileStore.delete(file_record.id)
+        print(f"[LOG] Marked file record {file_record.id} as deleted in database")
+        
+        # Push deletion to indexing server
+        push({
+            "id": file_record.id,
+            "path": file_record.path,
+        }, "delete")
+        print(f"[LOG] Pushed deletion to indexing server for file: {path}")
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to delete file record: {e}")
