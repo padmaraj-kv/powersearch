@@ -16,7 +16,6 @@ class QueryResponse(BaseModel):
 class UpsertRequest(BaseModel):
     file_id: str
     file_path: str
-    content: Optional[str] = None
 
 
 class UpsertResponse(BaseModel):

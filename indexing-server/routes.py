@@ -1,13 +1,10 @@
 import logging
-import uuid
-from datetime import datetime
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status
-from qdrant_client import models
 
 from config import settings
-from database import qdrant_client
+from database import search_embeddings, delete_file_embeddings, upsert_file_embedding
 from models import (
     QueryRequest,
     QueryResponse,
@@ -16,7 +13,7 @@ from models import (
     DeleteRequest,
     DeleteResponse,
 )
-from services import get_embedding, get_summary
+from services import get_embedding, get_summary, read_file_content
 
 logger = logging.getLogger(settings.app_name)
 
@@ -45,12 +42,8 @@ async def query_embeddings(request: QueryRequest):
         # Get embedding for the query text
         query_embedding = await get_embedding(request.text)
 
-        # Search in Qdrant
-        search_results = qdrant_client.search(
-            collection_name=settings.qdrant_collection_name,
-            query_vector=query_embedding,
-            limit=request.limit,
-        )
+        # Search in Qdrant using database function
+        search_results = search_embeddings(query_embedding, request.limit)
 
         # Format response
         results = []
@@ -76,76 +69,33 @@ async def query_embeddings(request: QueryRequest):
 
 @router.post("/upsert", response_model=UpsertResponse, tags=["Indexing"])
 @router.put("/upsert", response_model=UpsertResponse, tags=["Indexing"])
-async def upsert_embedding(request: UpsertRequest):
+async def upsert_embedding_endpoint(request: UpsertRequest):
     """
     Upsert endpoint - creates or updates embeddings for a file.
+    Automatically reads file content from file_path and generates summary.
     """
     try:
         logger.info(f"Processing upsert for file: {request.file_id}")
 
-        # Get content summary if content is provided
-        if request.content:
-            summary = await get_summary(request.content)
-            embedding_text = summary
-            logger.debug(f"Generated summary for {request.file_id}: {summary[:100]}...")
-        else:
-            # If no content provided, use file_path as placeholder text
-            embedding_text = f"File: {request.file_path}"
-            logger.debug(f"Using file path as embedding text for {request.file_id}")
-
-        # Generate embedding
-        embedding = await get_embedding(embedding_text)
-
-        # Check if file already exists by searching for the file_id
-        existing_points = qdrant_client.search(
-            collection_name=settings.qdrant_collection_name,
-            query_filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="file_id", match=models.MatchValue(value=request.file_id)
-                    )
-                ]
-            ),
-            limit=1,
+        # Read file content from file_path
+        file_content = read_file_content(request.file_path)
+        logger.debug(
+            f"Read {len(file_content)} characters from file: {request.file_path}"
         )
 
-        # Prepare point data
-        point_data = models.PointStruct(
-            id=str(uuid.uuid4()),
-            vector=embedding,
-            payload={
-                "file_id": request.file_id,
-                "file_path": request.file_path,
-                "summary": embedding_text,
-                "created_at": datetime.utcnow().isoformat(),
-                "updated_at": datetime.utcnow().isoformat(),
-            },
-        )
+        # Generate summary from file content
+        summary = await get_summary(file_content)
+        logger.debug(f"Generated summary for {request.file_id}: {summary[:100]}...")
 
-        # If exists, delete old embeddings first
-        if existing_points:
-            qdrant_client.delete(
-                collection_name=settings.qdrant_collection_name,
-                points_selector=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="file_id",
-                            match=models.MatchValue(value=request.file_id),
-                        )
-                    ]
-                ),
-            )
-            status_msg = "updated"
-            logger.info(f"Updated existing embeddings for file: {request.file_id}")
-        else:
-            status_msg = "created"
-            logger.info(f"Creating new embeddings for file: {request.file_id}")
+        # Generate embedding from summary
+        embedding = await get_embedding(summary)
 
-        # Upsert the new embedding
-        qdrant_client.upsert(
-            collection_name=settings.qdrant_collection_name,
-            points=[point_data],
-            wait=True,
+        # Upsert the file embedding using database function
+        status_msg = upsert_file_embedding(
+            file_id=request.file_id,
+            file_path=request.file_path,
+            embedding=embedding,
+            summary=summary,
         )
 
         return UpsertResponse(
@@ -163,24 +113,15 @@ async def upsert_embedding(request: UpsertRequest):
 
 
 @router.delete("/delete", response_model=DeleteResponse, tags=["Indexing"])
-async def delete_embedding(request: DeleteRequest):
+async def delete_embedding_endpoint(request: DeleteRequest):
     """
     Delete endpoint - removes embeddings for a file.
     """
     try:
         logger.info(f"Deleting embeddings for file: {request.file_id}")
 
-        # Delete all points with the given file_id
-        qdrant_client.delete(
-            collection_name=settings.qdrant_collection_name,
-            points_selector=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key="file_id", match=models.MatchValue(value=request.file_id)
-                    )
-                ]
-            ),
-        )
+        # Delete all points with the given file_id using database function
+        delete_file_embeddings(request.file_id)
 
         logger.info(f"Successfully deleted embeddings for file: {request.file_id}")
         return DeleteResponse(

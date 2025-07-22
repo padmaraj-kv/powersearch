@@ -1,4 +1,5 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -13,22 +14,28 @@ logging.basicConfig(
 )
 logger = logging.getLogger(settings.app_name)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events."""
+    # Startup
+    await ensure_collection_exists()
+    logger.info("Indexing server started successfully")
+    yield
+    # Shutdown (if needed)
+    # Add cleanup code here if required
+
+
 # Initialize FastAPI app
 app = FastAPI(
     title=settings.api_title,
     description=settings.api_description,
     version=settings.api_version,
+    lifespan=lifespan,
 )
 
 # Include the router
 app.include_router(router)
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the application on startup."""
-    await ensure_collection_exists()
-    logger.info("Indexing server started successfully")
 
 
 if __name__ == "__main__":

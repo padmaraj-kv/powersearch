@@ -138,8 +138,7 @@ PUT /upsert
 ```json
 {
   "file_id": "unique-file-id",
-  "file_path": "/path/to/file.txt",
-  "content": "file content to be indexed (optional)"
+  "file_path": "/path/to/file.txt"
 }
 ```
 
@@ -152,6 +151,8 @@ PUT /upsert
   "status": "created"
 }
 ```
+
+**Note:** The server automatically reads the file content from `file_path`, generates a summary using the configured AI model, and creates embeddings. The file must be accessible from the server's file system.
 
 ### Delete Embeddings
 
@@ -197,7 +198,7 @@ The server uses:
 
 ## Data Flow
 
-1. **Upsert**: File content → Summarization (Ollama) → Embedding generation (Ollama) → Storage (Qdrant)
+1. **Upsert**: File path → Read file content → Summarization (Ollama) → Embedding generation (Ollama) → Storage (Qdrant)
 2. **Query**: Query text → Embedding generation (Ollama) → Vector search (Qdrant) → Results
 3. **Delete**: File ID → Remove embeddings (Qdrant)
 
