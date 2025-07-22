@@ -15,10 +15,38 @@ interface FileType {
 
 interface SearchResultItem {
   id: string;
+  path: string; // Absolute file path
   title: string;
   description: string;
   type: string;
 }
+
+// File type detection based on extension
+const getFileTypeFromPath = (filePath: string): string => {
+  const extension = filePath.toLowerCase().split('.').pop() || '';
+  
+  // Image files
+  if (['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'].includes(extension)) {
+    return 'image';
+  }
+  
+  // PDF files
+  if (extension === 'pdf') {
+    return 'pdf';
+  }
+  
+  // Text files
+  if (['txt', 'md', 'rtf', 'doc', 'docx'].includes(extension)) {
+    return 'text';
+  }
+  
+  return 'unknown';
+};
+
+// Get file name from path
+const getFileName = (filePath: string): string => {
+  return filePath.split('/').pop() || filePath;
+};
 
 const fileTypes: FileType[] = [
   { id: 'all', label: 'All Files', icon: '🔍', keywords: [] },
@@ -35,15 +63,6 @@ const SearchApp: React.FC = () => {
   const [showResults, setShowResults] = useState<boolean>(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
-
-  // Mock search results for demonstration
-  const mockSearchResults: SearchResultItem[] = [
-    { id: '1', title: 'Document.pdf', description: 'Financial report from Q4 2023', type: 'pdf' },
-    { id: '2', title: 'Report.pdf', description: 'Annual sales report', type: 'pdf' },
-    { id: '3', title: 'Notes.txt', description: 'Meeting notes from last week', type: 'text' },
-    { id: '4', title: 'README.txt', description: 'Project documentation', type: 'text' },
-    { id: '5', title: 'Invoice.pdf', description: 'Client invoice #1234', type: 'pdf' },
-  ];
 
   // Auto-detect file type based on query
   const getFileTypeFromQuery = (query: string): FileType => {
@@ -123,18 +142,17 @@ const SearchApp: React.FC = () => {
           selectedFileType.id
         );
         
-        if (result.success) {
-          console.log('Search successful:', result.data);
-          
-          // Filter mock results based on file type
-          let filteredResults = mockSearchResults;
-          if (selectedFileType.id !== 'all') {
-            filteredResults = mockSearchResults.filter(item => {
-              return item.type === selectedFileType.id;
-            });
-          }
-          
-          setSearchResults(filteredResults);
+        if (result.success && result.data) {
+          // Assuming result.data is a file path
+          const filePath = result.data;
+          const searchResult: SearchResultItem = {
+            id: '1',
+            path: filePath,
+            title: getFileName(filePath),
+            description: filePath,
+            type: getFileTypeFromPath(filePath)
+          };
+          setSearchResults([searchResult]);
           setShowResults(true);
         } else {
           console.error('Search failed:', result.error);
@@ -176,8 +194,11 @@ const SearchApp: React.FC = () => {
   };
 
   const handleResultClick = (item: SearchResultItem): void => {
-    console.log('Opening item:', item);
-    // Here you would implement the logic to open the file
+    console.log('Opening file location:', item.path);
+    // Send IPC message to main process to open file location
+    if (window.electronAPI?.openFile) {
+      window.electronAPI.openFile(item.path);
+    }
   };
 
   return (
@@ -267,9 +288,17 @@ const SearchApp: React.FC = () => {
                 key={item.id}
                 className="search-result-item"
                 onClick={() => handleResultClick(item)}
+                title={`Open location: ${item.path}`}
               >
-                <div className="search-result-title">{item.title}</div>
-                <div className="search-result-description">{item.description}</div>
+                <div className="search-result-icon">
+                  {item.type === 'pdf' ? '📄' : 
+                   item.type === 'text' ? '📝' : 
+                   item.type === 'image' ? '🖼️' : '📎'}
+                </div>
+                <div className="search-result-content">
+                  <div className="search-result-title">{item.title}</div>
+                  <div className="search-result-path">{item.description}</div>
+                </div>
               </div>
             ))}
           </>

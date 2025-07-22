@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, shell } from 'electron';
 import path from 'node:path';
 // @ts-ignore - electron-squirrel-startup doesn't have types but returns a simple boolean
 import started from 'electron-squirrel-startup';
@@ -66,7 +66,7 @@ const createWindow = (): void => {
   });
   
   // Remove detached devtools as it might interfere with transparency
-  // mainWindow.webContents.openDevTools({ mode: 'detach' });
+  mainWindow.webContents.openDevTools({ mode: 'detach' });
 
   // Remove automatic DevTools opening
   // if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
@@ -96,11 +96,31 @@ ipcMain.handle('search-query', async (event, query: string, fileType: string) =>
       }),
     });
     
-    const data = await response.text(); // webhook.site returns text, not JSON
+    const data = "/Users/padmaraj/Downloads/pvr-mgf-gurugram-logo.jpg"
     return { success: true, data };
   } catch (error) {
     console.error('API call failed:', error);
     return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+});
+
+// Handler to open file location
+ipcMain.handle('open-file-location', async (event, filePath: string) => {
+  try {
+    // Show the file in its folder
+    shell.showItemInFolder(filePath);
+  } catch (error) {
+    console.error('Failed to open file location:', error);
+  }
+});
+
+// Handler to open file
+ipcMain.handle('open-file', async (event, filePath: string) => {
+  try {
+    // Open the file with the default application
+    shell.openPath(filePath);
+  } catch (error) {
+    console.error('Failed to open file:', error);
   }
 });
 
