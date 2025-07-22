@@ -142,3 +142,5 @@ vite.config.ts.timestamp-*
 */.venv
 .DS_Store
 __pycache__
+
+volumes/
