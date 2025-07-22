@@ -22,5 +22,10 @@ async def delete_file(request: Request):
     await asyncio.sleep(10)
     return {"message": "File deleted successfully"}
 
+@app.get("/files")
+async def search_files(path: str):
+    print(f"[LOG] Searching for files with path: {path}")
+    return {"message": "Files searched successfully"}
+
 if __name__ == "__main__":
     uvicorn.run(app, port=5001)

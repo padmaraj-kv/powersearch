@@ -18,6 +18,7 @@ from prompts import (
     get_summary_prompt,
     get_chunk_summary_prompt,
     get_final_summary_prompt,
+    get_image_content_prompt,
 )
 
 logger = logging.getLogger(settings.app_name)
@@ -28,6 +29,14 @@ VECTOR_LOG_LENGTH = 50
 
 # Image file extensions that support vision processing
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp", ".svg"}
+
+
+def setup_online_model_env():
+    """Set up environment variables for online model API keys."""
+    if settings.use_online_models and settings.gemini_api_key:
+        # Set environment variable for LiteLLM to use Gemini
+        os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
+        logger.debug("Set GOOGLE_API_KEY environment variable for online models")
 
 
 def truncate_for_log(text: str, max_length: int = MAX_LOG_LENGTH) -> str:
@@ -103,7 +112,8 @@ def encode_image_to_base64(file_path: str) -> str:
 
 async def process_image_with_vision(file_path: str) -> str:
     """
-    Process image using Gemma3 vision capabilities.
+    Process image using vision models (local or online).
+    Uses content-focused prompt to extract searchable information.
 
     Args:
         file_path: Path to the image file
@@ -120,17 +130,10 @@ async def process_image_with_vision(file_path: str) -> str:
         # Encode image to base64
         base64_image = encode_image_to_base64(file_path)
 
-        # Create vision prompt
-        prompt = f"""Analyze this image thoroughly and provide a detailed description. Include:
-1. What objects, people, text, or scenes are visible
-2. Any text content that can be read (OCR)
-3. The context and setting
-4. Colors, layout, and visual elements
-5. Any relevant details for indexing and search
+        # Use content extraction prompt
+        prompt = get_image_content_prompt(file_path)
 
-Provide a comprehensive description that would be useful for semantic search and retrieval."""
-
-        # Use Gemma3 with vision (multimodal)
+        # Create vision messages
         messages = [
             {
                 "role": "user",
@@ -144,10 +147,22 @@ Provide a comprehensive description that would be useful for semantic search and
             }
         ]
 
+        # Choose model based on configuration
+        if settings.use_online_models:
+            logger.info(f"Using online vision model: {settings.online_vision_model}")
+            # Set up API key for online models
+            setup_online_model_env()
+            model = settings.online_vision_model
+            api_base = None
+        else:
+            logger.info(f"Using local vision model: {settings.ollama_vision_model}")
+            model = f"ollama/{settings.ollama_vision_model}"
+            api_base = settings.ollama_base_url
+
         response = await acompletion(
-            model=f"ollama/{settings.ollama_summary_model}",  # gemma3:4b supports vision
+            model=model,
             messages=messages,
-            api_base=settings.ollama_base_url,
+            api_base=api_base,
             temperature=0.3,
             max_tokens=1500,
         )
@@ -156,7 +171,10 @@ Provide a comprehensive description that would be useful for semantic search and
 
         if not description:
             logger.warning(f"Empty vision description for {file_path}")
-            return f"Image file: {os.path.basename(file_path)}"
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Failed to extract content from image: {file_path}",
+            )
 
         logger.info(
             f"Generated vision description ({len(description)} chars) for {truncate_for_log(file_path, 60)}"
@@ -164,10 +182,14 @@ Provide a comprehensive description that would be useful for semantic search and
         logger.debug(f"Vision description: {truncate_for_log(description, 300)}")
         return description
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Vision processing failed for {file_path}: {e}")
-        # Fallback to basic image info
-        return f"Image file: {os.path.basename(file_path)} (vision processing failed)"
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Vision processing failed: {str(e)}",
+        )
 
 
 def extract_text_from_pdf(file_path: str) -> str:
@@ -527,7 +549,7 @@ async def get_embedding(text: str) -> List[float]:
 
 async def get_summary(text: str, file_path: str = "") -> str:
     """
-    Get summary from Ollama using LiteLLM with proper prompting.
+    Get summary using local or online models based on configuration.
 
     Args:
         text: Text to summarize
@@ -554,11 +576,22 @@ async def get_summary(text: str, file_path: str = "") -> str:
         prompt = get_summary_prompt(text, file_path)
         logger.debug(f"Using prompt: {truncate_for_log(prompt, 200)}")
 
-        # Use LiteLLM with Ollama
+        # Choose model based on configuration
+        if settings.use_online_models:
+            logger.info(f"Using online summary model: {settings.online_summary_model}")
+            # Set up API key for online models
+            setup_online_model_env()
+            model = settings.online_summary_model
+            api_base = None
+        else:
+            logger.info(f"Using local summary model: {settings.ollama_summary_model}")
+            model = f"ollama/{settings.ollama_summary_model}"
+            api_base = settings.ollama_base_url
+
         response = await acompletion(
-            model=f"ollama/{settings.ollama_summary_model}",
+            model=model,
             messages=[{"role": "user", "content": prompt}],
-            api_base=settings.ollama_base_url,
+            api_base=api_base,
             temperature=0.3,
             max_tokens=1000,
         )
@@ -567,14 +600,17 @@ async def get_summary(text: str, file_path: str = "") -> str:
 
         if not summary:
             logger.warning(f"Empty summary generated for {file_path}")
-            fallback_summary = text[:500] + "..." if len(text) > 500 else text
-            logger.info(f"Using fallback summary: {truncate_for_log(fallback_summary)}")
-            return fallback_summary
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to generate summary for {file_path}",
+            )
 
         logger.info(f"Generated summary ({len(summary)} chars) for {file_path}")
         logger.debug(f"Summary content: {truncate_for_log(summary, 300)}")
         return summary
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating summary for {file_path}: {e}")
         logger.error(f"Failed text (truncated): {truncate_for_log(text, 200)}")
@@ -586,7 +622,7 @@ async def get_summary(text: str, file_path: str = "") -> str:
 
 async def get_chunked_summary(text: str, file_path: str = "") -> str:
     """
-    Get summary for large text by processing in chunks.
+    Get summary for large text by processing in chunks using local or online models.
 
     Args:
         text: Large text to summarize
@@ -601,6 +637,22 @@ async def get_chunked_summary(text: str, file_path: str = "") -> str:
         logger.info(f"Processing {len(chunks)} chunks for {file_path}")
         logger.debug(f"Original text length: {len(text)} chars")
 
+        # Choose model based on configuration
+        if settings.use_online_models:
+            logger.info(
+                f"Using online model for chunked summary: {settings.online_summary_model}"
+            )
+            # Set up API key for online models
+            setup_online_model_env()
+            model = settings.online_summary_model
+            api_base = None
+        else:
+            logger.info(
+                f"Using local model for chunked summary: {settings.ollama_summary_model}"
+            )
+            model = f"ollama/{settings.ollama_summary_model}"
+            api_base = settings.ollama_base_url
+
         # Summarize each chunk
         chunk_summaries = []
         for i, chunk in enumerate(chunks):
@@ -612,9 +664,9 @@ async def get_chunked_summary(text: str, file_path: str = "") -> str:
             logger.debug(f"Chunk {i+1} prompt: {truncate_for_log(prompt, 150)}")
 
             response = await acompletion(
-                model=f"ollama/{settings.ollama_summary_model}",
+                model=model,
                 messages=[{"role": "user", "content": prompt}],
-                api_base=settings.ollama_base_url,
+                api_base=api_base,
                 temperature=0.3,
                 max_tokens=500,
             )
@@ -628,9 +680,10 @@ async def get_chunked_summary(text: str, file_path: str = "") -> str:
 
         if not chunk_summaries:
             logger.warning(f"No chunk summaries generated for {file_path}")
-            fallback_summary = text[:500] + "..." if len(text) > 500 else text
-            logger.info(f"Using fallback summary: {truncate_for_log(fallback_summary)}")
-            return fallback_summary
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=f"Failed to generate chunk summaries for {file_path}",
+            )
 
         logger.info(
             f"Generated {len(chunk_summaries)} chunk summaries, creating final summary"
@@ -641,9 +694,9 @@ async def get_chunked_summary(text: str, file_path: str = "") -> str:
         logger.debug(f"Final prompt: {truncate_for_log(final_prompt, 200)}")
 
         response = await acompletion(
-            model=f"ollama/{settings.ollama_summary_model}",
+            model=model,
             messages=[{"role": "user", "content": final_prompt}],
-            api_base=settings.ollama_base_url,
+            api_base=api_base,
             temperature=0.3,
             max_tokens=1000,
         )
@@ -664,10 +717,12 @@ async def get_chunked_summary(text: str, file_path: str = "") -> str:
         logger.debug(f"Final summary content: {truncate_for_log(final_summary, 300)}")
         return final_summary
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error in chunked summarization for {file_path}: {e}")
         logger.error(f"Failed text (truncated): {truncate_for_log(text, 200)}")
-        # Return first chunk as fallback
-        fallback_text = text[:1000] + "..." if len(text) > 1000 else text
-        logger.info(f"Using text fallback: {truncate_for_log(fallback_text)}")
-        return fallback_text
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Failed to generate chunked summary: {str(e)}",
+        )
