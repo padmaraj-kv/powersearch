@@ -32,26 +32,46 @@ async def ensure_collection_exists():
 
 
 def search_embeddings(
-    query_vector: List[float], limit: int = 10
-) -> List[models.ScoredPoint]:
+    query_vector: List[float], limit: int = 10, threshold: float = 0.0
+) -> List[dict]:
     """
-    Search for similar embeddings in the collection.
+    Search for similar embeddings in the collection with threshold filtering.
 
     Args:
         query_vector: The embedding vector to search for
         limit: Maximum number of results to return
+        threshold: Minimum similarity score threshold (0.0-1.0)
 
     Returns:
-        List of scored points with similarity scores and metadata
+        List of dictionaries with file_id, file_path, and score
+        Only returns results with scores >= threshold
     """
     try:
+        logger.debug(f"Searching with limit={limit}, threshold={threshold}")
+
         results = qdrant_client.search(
             collection_name=settings.qdrant_collection_name,
             query_vector=query_vector,
             limit=limit,
         )
-        logger.debug(f"Vector search returned {len(results)} results")
-        return results
+
+        logger.debug(f"Vector search returned {len(results)} raw results")
+
+        # Filter by threshold and convert to dict format
+        filtered_results = []
+        for result in results:
+            if result.score >= threshold:
+                filtered_results.append(
+                    {
+                        "file_id": result.payload["file_id"],
+                        "file_path": result.payload["file_path"],
+                        "score": result.score,
+                    }
+                )
+
+        logger.debug(f"After threshold filtering: {len(filtered_results)} results")
+        return filtered_results
+
     except Exception as e:
         logger.error(f"Vector search failed: {e}")
         raise
