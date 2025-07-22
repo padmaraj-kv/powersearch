@@ -16,6 +16,17 @@ def push(data: dict, event: str):
             print(f"[ERROR] Failed to push data to index: {e}")
             return None
         
+    elif event == "search":
+        print(f"[LOG] Searching for files: {data}")
+        try:
+            response = requests.get("http://localhost:5001/files", params=data)
+            response.raise_for_status()
+            print(f"[LOG] Successfully searched for files: {response.json()}")
+            return response.json()
+        except requests.RequestException as e:
+            print(f"[ERROR] Failed to search for files: {e}")
+            return None
+        
     elif event == "delete":
         print(f"[LOG] Deleting file: {data}")
         try:
