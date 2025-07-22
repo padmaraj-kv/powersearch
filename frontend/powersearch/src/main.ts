@@ -88,7 +88,7 @@ app.on('ready', () => {
   createWindow();
 
   // Register global shortcut (Command+Option+Space on macOS, Ctrl+Alt+Space on others)
-  const shortcut = process.platform === 'darwin' ? 'Command+Option+Space' : 'Ctrl+Alt+Space';
+  const shortcut = process.platform === 'darwin' ? 'Command+Control+Space' : 'Ctrl+Alt+Space';
   const registered = globalShortcut.register(shortcut, () => {
     toggleWindow();
   });
@@ -105,18 +105,14 @@ ipcMain.handle('search-query', async (event, query: string, fileType: string) =>
   
   try {
     // Make API call to webhook.site for testing
-    const response = await fetch('https://webhook.site/6c743397-0ee2-4982-a42c-e0649599063c', {
-      method: 'POST',
+    const response = await fetch(`http://localhost:4000/files?search=${query}`, {
+      method: 'GET',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ 
-        query,
-        fileType 
-      }),
     });
-    
-    const data = "/Users/padmaraj/Downloads/pvr-mgf-gurugram-logo.jpg"
+    const data = await response.json();
+    console.log('API response:', data);
     return { success: true, data };
   } catch (error) {
     console.error('API call failed:', error);

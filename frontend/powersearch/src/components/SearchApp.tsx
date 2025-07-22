@@ -144,15 +144,15 @@ const SearchApp: React.FC = () => {
         
         if (result.success && result.data) {
           // Assuming result.data is a file path
-          const filePath = result.data;
-          const searchResult: SearchResultItem = {
-            id: '1',
-            path: filePath,
-            title: getFileName(filePath),
-            description: filePath,
-            type: getFileTypeFromPath(filePath)
-          };
-          setSearchResults([searchResult]);
+          const filePath = result.data.files;
+          const searchResults = filePath.map((path: string) => ({
+            id: String(path),
+            path: path,
+            title: getFileName(path),
+            description: path,
+            type: getFileTypeFromPath(path)
+          }));
+          setSearchResults(searchResults);
           setShowResults(true);
         } else {
           console.error('Search failed:', result.error);
