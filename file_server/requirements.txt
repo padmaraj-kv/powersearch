@@ -1,4 +1,6 @@
 psycopg2-binary
 python-dotenv 
 pypika
-pydantic 
+pydantic
+fastapi
+uvicorn 
