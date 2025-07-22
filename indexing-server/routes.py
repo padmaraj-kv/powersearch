@@ -117,7 +117,7 @@ async def query_embeddings(request: QueryRequest):
 
 
 @router.post("/upsert", response_model=UpsertResponse, tags=["Indexing"])
-@router.put("/upsert", response_model=UpsertResponse, tags=["Indexing"])
+# @router.put("/upsert", response_model=UpsertResponse, tags=["Indexing"])
 async def upsert_embedding_endpoint(request: UpsertRequest):
     """
     Upsert endpoint - creates or updates embeddings for a file.

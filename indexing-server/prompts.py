@@ -21,6 +21,34 @@ def get_summary_prompt(text: str, file_path: str = "") -> str:
 {text}"""
 
 
+def get_image_content_prompt(file_path: str = "") -> str:
+    """
+    Generate a content extraction prompt for images.
+    Focuses on extracting searchable content from images.
+
+    Args:
+        file_path: Optional file path for context
+
+    Returns:
+        Formatted prompt for image content extraction
+    """
+    file_context = f" from {file_path}" if file_path else ""
+
+    return f"""Extract and describe all the textual and visual content from this image{file_context}. Your goal is to make this image searchable by its content. Include:
+
+1. ALL TEXT visible in the image (read every word, number, label, title, caption)
+2. What objects, people, or scenes are shown
+3. The main subject or purpose of the image  
+4. Any diagrams, charts, graphs, or data visualizations
+5. UI elements, buttons, menus, or interface components
+6. Logos, brands, or identifying marks
+7. Colors, layout, and visual style only if relevant to content
+
+Focus on CONTENT that people would search for. Be comprehensive but concise. Write as if describing the image to someone who needs to find it later through search.
+
+Return only the extracted content description without labels or formatting."""
+
+
 def get_chunk_summary_prompt(
     chunk: str, chunk_number: int, total_chunks: int, file_path: str = ""
 ) -> str:
