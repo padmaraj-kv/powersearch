@@ -23,8 +23,16 @@ async def root():
 async def search_files(search: str):
     """Search files endpoint"""
     print(f"[LOG] Searching for files with search: {search}")
-    push({"path": search}, "search")
-    return {"files": ["file1", "file2", "file3"]}
+    response = push({"path": search}, "search")
+    
+    # Extract file paths from the response
+    if response and isinstance(response, list):
+        file_paths = [item.get("file_path") for item in response if "file_path" in item]
+        print(f"[LOG] Extracted {len(file_paths)} file paths from search response")
+        return {"files": file_paths}
+    else:
+        print(f"[LOG] No valid response or empty response: {response}")
+        return {"files": []}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=4000)

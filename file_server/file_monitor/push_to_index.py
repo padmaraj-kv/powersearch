@@ -8,7 +8,8 @@ def push(data: dict, event: str):
     """
     if event == "upsert":
         try:
-            response = requests.post("http://localhost:5001/files", json=data)
+            print(f"[LOG] Pushing data to index: {data}")
+            response = requests.post("http://localhost:5001/upsert", json=data)
             response.raise_for_status()
             print(f"[LOG] Successfully pushed data to index: {response.json()}")
             return response.json()
@@ -19,18 +20,24 @@ def push(data: dict, event: str):
     elif event == "search":
         print(f"[LOG] Searching for files: {data}")
         try:
-            response = requests.get("http://localhost:5001/files", params=data)
+            # Extract path from data and format request body
+            search_text = data.get('path', '')
+            request_body = {
+                "text": search_text,
+                "limit": 10
+            }
+            response = requests.post("http://localhost:5001/query", json=request_body)
             response.raise_for_status()
             print(f"[LOG] Successfully searched for files: {response.json()}")
             return response.json()
         except requests.RequestException as e:
-            print(f"[ERROR] Failed to search for files: {e}")
+            print(f"[ERROR] Failed to search for files: {e}")   
             return None
         
     elif event == "delete":
         print(f"[LOG] Deleting file: {data}")
         try:
-            response = requests.delete("http://localhost:5001/files", json=data)
+            response = requests.delete("http://localhost:5001/delete", json=data)
             response.raise_for_status()
             print(f"[LOG] Successfully pushed data to index: {response.json()}")
             return response.json()

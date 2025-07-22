@@ -12,7 +12,7 @@ def check_and_insert_file_by_path(path: str):
         existing = FileStore.read_by_path(path)
         if existing:
             print(f"[LOG] Entry already exists for path: {path}")
-            return existing[0]  # Return the first matching record
+            return existing[0].dict()  # Return the first matching record as dict
         else:
             print(f"[LOG] No entry found for path: {path}. Inserting new record...")
             now = datetime.now()
@@ -38,9 +38,10 @@ def handle_modify(data: dict) -> None:
         if file:
             print(f"[LOG] File record found for path: {path}")
             print(f"[LOG] File record: {file}")
+            print(f"[LOG] About to push to index - file_id: {file['id']}, file_path: {file['path']}")
             push({
-                "id": file["id"],
-                "path": file["path"],
+                "file_id": file["id"],
+                "file_path": file["path"],
                 }, "upsert")
         else:
             print("[LOG] No file record found for path: {path}")
@@ -88,8 +89,7 @@ def handle_delete(data: dict) -> None:
         
         # Push deletion to indexing server
         push({
-            "id": file_record.id,
-            "path": file_record.path,
+            "file_id": file_record.id,
         }, "delete")
         print(f"[LOG] Pushed deletion to indexing server for file: {path}")
         
