@@ -1,6 +1,7 @@
 """Central event handler for file system events."""
 
 from .event_types import FileEventType
+from .file_event_handlers import handle_modify, handle_move, handle_delete
 
 
 def handle_event(event_type: FileEventType, data: dict) -> None:
@@ -11,13 +12,12 @@ def handle_event(event_type: FileEventType, data: dict) -> None:
         event_type: The type of file system event that occurred
         data: Dictionary containing event-specific data (path, timestamps, etc.)
     """
-    # Only print if the event is about a file (not a directory)
     if data.get("is_directory") is False:
-        # Suppress CREATED events for files
         if event_type == FileEventType.CREATED:
             return
-        print(f"[FILE MONITOR] Event Type: {event_type.value.upper()}")
-        print(f"[FILE MONITOR] Event Data:")
-        for key, value in data.items():
-            print(f"  {key}: {value}")
-        print("-" * 50) 
+        elif event_type == FileEventType.MODIFIED:
+            handle_modify(data)
+        elif event_type == FileEventType.MOVED:
+            handle_move(data)
+        elif event_type == FileEventType.DELETED:
+            handle_delete(data) 
