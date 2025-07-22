@@ -1,4 +1,4 @@
-import { app, BrowserWindow, screen, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, screen, ipcMain, shell, globalShortcut } from 'electron';
 import path from 'node:path';
 // @ts-ignore - electron-squirrel-startup doesn't have types but returns a simple boolean
 import started from 'electron-squirrel-startup';
@@ -14,13 +14,33 @@ if (started) {
 
 let mainWindow: BrowserWindow | null = null;
 
+const toggleWindow = () => {
+  if (!mainWindow) {
+    createWindow();
+    return;
+  }
+
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
+  } else {
+    // Center the window before showing
+    const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
+    mainWindow.setPosition(
+      Math.floor((screenWidth - 800) / 2),
+      Math.floor((screenHeight - 400) / 2)
+    );
+    mainWindow.show();
+    mainWindow.focus();
+  }
+};
+
 const createWindow = (): void => {
   const { width: screenWidth, height: screenHeight } = screen.getPrimaryDisplay().workAreaSize;
   
   // Create the browser window.
   mainWindow = new BrowserWindow({
     width: 800,
-    height: 400, // Increased for debugging
+    height: 400,
     frame: false,
     transparent: true,
     backgroundColor: '#00000000', // Fully transparent background
@@ -35,15 +55,12 @@ const createWindow = (): void => {
       nodeIntegration: false,
       backgroundThrottling: false, // Prevent throttling when window is hidden
     },
-    show: true, // Show by default since no shortcut
+    show: false, // Start hidden, show on shortcut
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false, // Remove window shadow
   });
 
-  // Ensure window stays transparent
-  mainWindow.setBackgroundColor('#00000000');
-  
   // Load the app
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -64,18 +81,21 @@ const createWindow = (): void => {
       mainWindow.focus();
     }
   });
-  
-  // Remove detached devtools as it might interfere with transparency
-  mainWindow.webContents.openDevTools({ mode: 'detach' });
-
-  // Remove automatic DevTools opening
-  // if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
-  // }
 };
 
 // This method will be called when Electron has finished initialization
 app.on('ready', () => {
   createWindow();
+
+  // Register global shortcut (Command+Option+Space on macOS, Ctrl+Alt+Space on others)
+  const shortcut = process.platform === 'darwin' ? 'Command+Option+Space' : 'Ctrl+Alt+Space';
+  const registered = globalShortcut.register(shortcut, () => {
+    toggleWindow();
+  });
+
+  if (!registered) {
+    console.log('Shortcut registration failed');
+  }
 });
 
 // IPC event handlers
@@ -117,7 +137,7 @@ ipcMain.handle('open-file-location', async (event, filePath: string) => {
 // Handler to open file
 ipcMain.handle('open-file', async (event, filePath: string) => {
   try {
-    // Open the file with the default application
+    // Open the file with default application
     shell.openPath(filePath);
   } catch (error) {
     console.error('Failed to open file:', error);
@@ -140,6 +160,11 @@ app.on('activate', () => {
     // Show the existing window if it's hidden
     mainWindow.show();
   }
+});
+
+// Clean up shortcuts when quitting
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
 });
 
 // In this file you can include the rest of your app's specific main process
